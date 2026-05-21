@@ -1,0 +1,9 @@
+define X on custID:
+  compute T on transID transformedby ''
+  output T
+  where True
+define T on transID:
+  compute Amt on Amount transformedby 'aggregate:any'
+  compute Dat on Date transformedby 'aggregate:any'
+  output Amt
+  where $Dat$ > '2019-01-01'

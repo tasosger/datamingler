@@ -1,0 +1,6 @@
+define X on custID:
+  compute A on Age transformedby 'aggregate:any'
+  compute G on Gender transformedby 'aggregate:any'
+  compute N on Comment transformedby 'map:python,,len($N$);aggregate:sum'
+  output A,G,N
+  where True

@@ -1,0 +1,87 @@
+<?xml version="1.0"?>
+<edges>
+  <edge>
+    <headnode>
+      <name>custID</name>
+      <description>Customer identifier</description>
+    </headnode>
+    <tailnode>
+      <name>Age</name>
+      <description>Customer age</description>
+    </tailnode>
+    <datasource>customers_csv</datasource>
+    <query></query>
+    <key>1</key>
+    <value>2</value>
+  </edge>
+  <edge>
+    <headnode>
+      <name>custID</name>
+      <description>Customer identifier</description>
+    </headnode>
+    <tailnode>
+      <name>Gender</name>
+      <description>Customer gender</description>
+    </tailnode>
+    <datasource>customers_csv</datasource>
+    <query></query>
+    <key>1</key>
+    <value>3</value>
+  </edge>
+  <edge>
+    <headnode>
+      <name>custID</name>
+      <description>Customer identifier</description>
+    </headnode>
+    <tailnode>
+      <name>Comment</name>
+      <description>Free-text comment</description>
+    </tailnode>
+    <datasource>customers_csv</datasource>
+    <query></query>
+    <key>1</key>
+    <value>4</value>
+  </edge>
+  <edge>
+    <headnode>
+      <name>custID</name>
+      <description>Customer identifier</description>
+    </headnode>
+    <tailnode>
+      <name>transID</name>
+      <description>Transaction identifier</description>
+    </tailnode>
+    <datasource>customers_csv</datasource>
+    <query></query>
+    <key>1</key>
+    <value>5</value>
+  </edge>
+  <edge>
+    <headnode>
+      <name>transID</name>
+      <description>Transaction identifier</description>
+    </headnode>
+    <tailnode>
+      <name>Amount</name>
+      <description>Transaction amount</description>
+    </tailnode>
+    <datasource>customers_csv</datasource>
+    <query></query>
+    <key>5</key>
+    <value>6</value>
+  </edge>
+  <edge>
+    <headnode>
+      <name>transID</name>
+      <description>Transaction identifier</description>
+    </headnode>
+    <tailnode>
+      <name>Date</name>
+      <description>Transaction date</description>
+    </tailnode>
+    <datasource>customers_csv</datasource>
+    <query></query>
+    <key>5</key>
+    <value>7</value>
+  </edge>
+</edges>

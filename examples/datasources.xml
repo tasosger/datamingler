@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<datasources>
+  <datasource type="csv">
+    <name>customers_csv</name>
+    <delimiter>,</delimiter>
+    <path>.</path>
+    <filename>customers.csv</filename>
+    <headings>yes</headings>
+  </datasource>
+</datasources>
