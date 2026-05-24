@@ -86,6 +86,8 @@ def main(argv: list[str] | None = None) -> int:
     serve_parser.add_argument("--neo4j-uri",      default="bolt://localhost:7687")
     serve_parser.add_argument("--neo4j-user",     default="neo4j")
     serve_parser.add_argument("--neo4j-password", default="12345678")
+    serve_parser.add_argument("--redis-host",     default="127.0.0.1")
+    serve_parser.add_argument("--redis-port",     type=int, default=6379)
     serve_parser.add_argument("--host", default="localhost")
     serve_parser.add_argument("--port", type=int, default=8080)
 
@@ -203,6 +205,8 @@ def main(argv: list[str] | None = None) -> int:
             neo4j_uri=args.neo4j_uri,
             neo4j_user=args.neo4j_user,
             neo4j_password=args.neo4j_password,
+            redis_host=args.redis_host,
+            redis_port=args.redis_port,
             host=args.host,
             port=args.port,
         )

@@ -37,6 +37,8 @@ _NEO4J_URI:      str = "bolt://localhost:7687"
 _NEO4J_USER:     str = "neo4j"
 _NEO4J_PASSWORD: str = "12345678"
 _DATASOURCES_XML: str = ""
+_REDIS_HOST:     str = "127.0.0.1"
+_REDIS_PORT:     int = 6379
 _STATIC_DIR: Path = Path(__file__).parent / "static"
 
 _UPDATABLE_EDGE_FIELDS = {"selected", "datasource", "query", "description"}
@@ -220,10 +222,13 @@ class _Handler(BaseHTTPRequestHandler):
             from .sources import DataSourceRegistry
             from .xmlio import parse_query_text
 
+            from .kvstore import KeyListStore
+
             graph = read_graph_from_neo4j(**self._neo4j_kwargs())
             registry = DataSourceRegistry.from_xml(_DATASOURCES_XML)
             plan = parse_query_text(query_text)
-            result = QueryEvaluator(graph, registry).evaluate(plan)
+            store = KeyListStore(host=_REDIS_HOST, port=_REDIS_PORT)
+            result = QueryEvaluator(graph, registry, store=store).evaluate(plan)
 
             if fmt == "csv":
                 rows = result.to_rows()
@@ -325,6 +330,8 @@ def serve(
     neo4j_uri: str = "bolt://localhost:7687",
     neo4j_user: str = "neo4j",
     neo4j_password: str = "12345678",
+    redis_host: str = "127.0.0.1",
+    redis_port: int = 6379,
     host: str = "localhost",
     port: int = 8080,
 ) -> None:
@@ -333,11 +340,13 @@ def serve(
     The DVM graph is read from / written to Neo4j on every request.
     ``datasources_xml`` is the only file path required at startup.
     """
-    global _NEO4J_URI, _NEO4J_USER, _NEO4J_PASSWORD, _DATASOURCES_XML
+    global _NEO4J_URI, _NEO4J_USER, _NEO4J_PASSWORD, _DATASOURCES_XML, _REDIS_HOST, _REDIS_PORT
     _NEO4J_URI      = neo4j_uri
     _NEO4J_USER     = neo4j_user
     _NEO4J_PASSWORD = neo4j_password
     _DATASOURCES_XML = str(Path(datasources_xml).resolve())
+    _REDIS_HOST     = redis_host
+    _REDIS_PORT     = redis_port
 
     server = HTTPServer((host, port), _Handler)
     print(f"DataMingler server running on http://{host}:{port}/")
@@ -369,6 +378,8 @@ if __name__ == "__main__":
     p.add_argument("--neo4j-uri",      default="bolt://localhost:7687")
     p.add_argument("--neo4j-user",     default="neo4j")
     p.add_argument("--neo4j-password", default="12345678")
+    p.add_argument("--redis-host",     default="127.0.0.1")
+    p.add_argument("--redis-port",     type=int, default=6379)
     p.add_argument("--host", default="localhost")
     p.add_argument("--port", type=int, default=8080)
     a = p.parse_args()
@@ -377,6 +388,8 @@ if __name__ == "__main__":
         neo4j_uri=a.neo4j_uri,
         neo4j_user=a.neo4j_user,
         neo4j_password=a.neo4j_password,
+        redis_host=a.redis_host,
+        redis_port=a.redis_port,
         host=a.host,
         port=a.port,
     )
