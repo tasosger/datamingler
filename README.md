@@ -6,132 +6,24 @@ no Java, no PHP, no Neo4j dependency.
 
 ---
 
-## Prerequisites
+## Running with Docker (recommended)
 
-| Tool | Minimum version | Notes |
-|------|----------------|-------|
-| Python | 3.10 | `python --version` |
-| Node.js | 18 | for the Next.js frontend — `node --version` |
-| Redis | 6.x | Required to run queries; not needed just to run tests |
-| Neo4j | 5.x | Stores the DVM graph; required to run the server |
-| pip | any | for installing the Python package |
-| npm | any | for installing the frontend (`npm install`) |
+The only prerequisite is **Docker Desktop** — it handles Redis, Neo4j, the Python backend, and the Next.js frontend automatically.
 
-Optional Python extras:
-
-| Extra | Package installed | Needed for |
-|-------|------------------|-----------|
-| `excel` | `openpyxl` | Excel datasources |
-| `db` | `sqlalchemy` | Non-SQLite databases |
-| `neo4j` | `neo4j` driver | Exporting/importing the DVM from Neo4j |
-| `dev` | `pytest`, `fakeredis` | Running the test suite |
-
----
-
-## Installation
-
-**From source (recommended for development):**
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+2. Start everything:
 
 ```powershell
-cd C:\Users\anast\datamingler\datamingler
-pip install -e ".[dev,excel]"
+docker compose up --build
 ```
 
-This installs the `datamingler` command and all dev/Excel dependencies in
-editable mode so changes to the source take effect immediately.
+The first run takes a few minutes while Docker downloads images and builds the containers. Once it's ready, open **http://localhost:3000**.
 
-**Minimal install (no Excel, no tests):**
+On subsequent starts you can skip `--build`:
 
 ```powershell
-pip install -e .
+docker compose up
 ```
-
----
-
-## Running the web UI (recommended)
-
-There are **four** things to have running: Redis, Neo4j, the Python backend, and the Next.js frontend.
-
-### 1. Install frontend dependencies (once)
-
-```powershell
-cd C:\Users\anast\datamingler\datamingler\frontend
-npm install
-```
-
-### 2. Start Redis
-
-DataMingler uses Redis to materialise DVM edges during query evaluation.
-
-```powershell
-# Option A: if you have Redis installed natively
-redis-server
-
-# Option B: via Docker
-docker run -d -p 6379:6379 redis:7-alpine
-
-# Option C: use the bundled Windows Redis binary (legacy)
-.\DataMingler-main\redis-2.4.5-win32-win64\64bit\redis-server.exe
-```
-
-### 3. Start Neo4j
-
-```powershell
-# Docker (easiest)
-docker run -d -p 7474:7474 -p 7687:7687 --name neo4j `
-  -e NEO4J_AUTH=neo4j/12345678 `
-  neo4j:5
-
-# Or use Neo4j Desktop: https://neo4j.com/download/
-```
-
-After first start, open http://localhost:7474 and verify you can log in with `neo4j` / `12345678`.
-
-Load your DVM graph into Neo4j once (or whenever you want to reset it):
-
-```powershell
-cd C:\Users\anast\datamingler\datamingler
-datamingler load-neo4j examples\sample.dvm.xml --reset
-```
-
-### 5. Start the DataMingler Python server
-
-```powershell
-cd C:\Users\anast\datamingler\datamingler
-
-datamingler serve examples\datasources.xml
-```
-
-Custom Neo4j connection (defaults match the Docker command above):
-
-```powershell
-datamingler serve examples\datasources.xml `
-  --neo4j-uri      bolt://localhost:7687 `
-  --neo4j-user     neo4j `
-  --neo4j-password 12345678
-```
-
-Or, without installing the package:
-
-```powershell
-cd C:\Users\anast\datamingler\datamingler
-$env:PYTHONPATH = "."
-python -m datamingler.server --datasources examples\datasources.xml
-```
-
-### 6. Start the Next.js frontend (second terminal)
-
-```powershell
-cd C:\Users\anast\datamingler\datamingler\frontend
-npm run dev
-```
-
-The `.env.local` file already points `PYTHON_API_URL` at `http://localhost:8080`.
-Next.js proxies all `/api/*` calls server-side so there are no CORS issues.
-
-### 7. Open the browser
-
-Navigate to **http://localhost:3000/**
 
 The UI has three tabs:
 
@@ -143,15 +35,73 @@ The UI has three tabs:
 
 ---
 
-## Production build
+## Running manually (without Docker)
+
+### Prerequisites
+
+| Tool | Minimum version | Notes |
+|------|----------------|-------|
+| Python | 3.10 | `python --version` |
+| Node.js | 18 | for the Next.js frontend — `node --version` |
+| Redis | 6.x | Required to run queries; not needed just to run tests |
+| Neo4j | 5.x | Stores the DVM graph; required to run the server |
+
+Optional Python extras:
+
+| Extra | Package installed | Needed for |
+|-------|------------------|-----------|
+| `excel` | `openpyxl` | Excel datasources |
+| `db` | `sqlalchemy` | Non-SQLite databases |
+| `neo4j` | `neo4j` driver | Exporting/importing the DVM from Neo4j |
+| `dev` | `pytest`, `fakeredis` | Running the test suite |
+
+### 1. Install the Python package
 
 ```powershell
-cd C:\Users\anast\datamingler\datamingler\frontend
-npm run build   # compiles Next.js to .next/
-npm start       # serves the compiled app on port 3000
+pip install -e ".[dev,excel]"
 ```
 
-Run the Python backend in a separate terminal as described above.
+### 2. Start Redis
+
+```powershell
+# Docker
+docker run -d -p 6379:6379 redis:7-alpine
+
+# or natively if installed
+redis-server
+```
+
+### 3. Start Neo4j
+
+```powershell
+docker run -d -p 7474:7474 -p 7687:7687 --name neo4j `
+  -e NEO4J_AUTH=neo4j/12345678 `
+  neo4j:5
+```
+
+Or use [Neo4j Desktop](https://neo4j.com/download/). Default credentials: `neo4j` / `12345678`.
+
+### 4. Load the sample DVM graph into Neo4j (once)
+
+```powershell
+datamingler load-neo4j examples\sample.dvm.xml --reset
+```
+
+### 5. Start the Python backend
+
+```powershell
+datamingler serve examples\datasources.xml
+```
+
+### 6. Start the Next.js frontend (second terminal)
+
+```powershell
+cd frontend
+npm install   # first time only
+npm run dev
+```
+
+Open **http://localhost:3000**.
 
 ---
 
