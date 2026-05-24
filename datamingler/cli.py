@@ -77,13 +77,15 @@ def main(argv: list[str] | None = None) -> int:
                              help="Traverse all edges via BFS (ignore selected flag)")
     export_json.add_argument("--output", "-o")
 
-    # --- HTTP server (mirrors createAPI.php / runquery.php) ---
+    # --- HTTP server ---
     serve_parser = subparsers.add_parser(
         "serve",
-        help="Start an HTTP server exposing eval/inspect/datasources endpoints",
+        help="Start the HTTP server — DVM graph is read from/written to Neo4j",
     )
-    serve_parser.add_argument("dvm_xml")
-    serve_parser.add_argument("datasources_xml")
+    serve_parser.add_argument("datasources_xml", help="Path to datasources XML file")
+    serve_parser.add_argument("--neo4j-uri",      default="bolt://localhost:7687")
+    serve_parser.add_argument("--neo4j-user",     default="neo4j")
+    serve_parser.add_argument("--neo4j-password", default="12345678")
     serve_parser.add_argument("--host", default="localhost")
     serve_parser.add_argument("--port", type=int, default=8080)
 
@@ -196,7 +198,14 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "serve":
         from .server import serve
-        serve(args.dvm_xml, args.datasources_xml, host=args.host, port=args.port)
+        serve(
+            args.datasources_xml,
+            neo4j_uri=args.neo4j_uri,
+            neo4j_user=args.neo4j_user,
+            neo4j_password=args.neo4j_password,
+            host=args.host,
+            port=args.port,
+        )
         return 0
 
     if args.command == "list-datasources":

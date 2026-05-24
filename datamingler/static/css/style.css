@@ -1,0 +1,65 @@
+/* ── DataMingler web UI ─────────────────────────────────────────────── */
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* Navbar */
+.dm-navbar {
+  background: #1a1a2e;
+}
+
+/* Cytoscape container */
+#cy {
+  width: 100%;
+  height: 560px;
+  background: #f8f9fa;
+}
+
+/* Legend swatches */
+.legend-swatch {
+  display: inline-block;
+  width: 18px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+/* Query editor textarea */
+.query-editor {
+  font-size: 0.82rem;
+  resize: vertical;
+  tab-size: 2;
+}
+
+/* Results pre block */
+.results-pre {
+  font-size: 0.82rem;
+  min-height: 380px;
+  max-height: 520px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: #f8f9fa;
+}
+
+/* Datasources table */
+#ds-table .table td,
+#ds-table .table th {
+  font-size: 0.85rem;
+  vertical-align: middle;
+}
+
+/* Edge info table inside sidebar */
+#edge-info-body .table td,
+#edge-info-body .table th {
+  font-size: 0.8rem;
+  padding: 0.2rem 0.4rem;
+}
+
+/* Nav tabs */
+.nav-tabs .nav-link {
+  font-size: 0.875rem;
+  font-weight: 500;
+}

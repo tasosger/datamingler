@@ -9,13 +9,13 @@ description = "Clean Python implementation of the DataMingler DVM/query engine."
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "DataMingler maintainers" }]
-dependencies = []
+dependencies = ["redis>=4.0"]
 
 [project.optional-dependencies]
 excel = ["openpyxl>=3.1"]
 db = ["sqlalchemy>=2.0"]
 neo4j = ["neo4j>=5.0"]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "fakeredis>=2.0"]
 
 [project.scripts]
 datamingler = "datamingler.cli:main"
@@ -23,3 +23,6 @@ datamingler = "datamingler.cli:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["datamingler*"]
+
+[tool.setuptools.package-data]
+datamingler = ["static/**/*", "static/*"]

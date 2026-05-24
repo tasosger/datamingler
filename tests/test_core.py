@@ -4,13 +4,23 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import fakeredis
+
 from datamingler.engine import QueryEvaluator
+from datamingler.kvstore import KeyListStore
 from datamingler.sources import DataSourceRegistry
 from datamingler.xmlio import load_dvm_xml, load_query_text, parse_query_text, save_query_xml, load_query_xml
 
 
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLES = ROOT / "examples"
+
+
+def _make_store() -> KeyListStore:
+    """Return a KeyListStore backed by fakeredis (no live Redis needed in tests)."""
+    store = object.__new__(KeyListStore)
+    store._redis = fakeredis.FakeRedis(decode_responses=True)
+    return store
 
 
 class DataMinglerCoreTests(unittest.TestCase):
@@ -30,7 +40,7 @@ class DataMinglerCoreTests(unittest.TestCase):
         graph = load_dvm_xml(EXAMPLES / "sample.dvm.xml")
         registry = DataSourceRegistry.from_xml(EXAMPLES / "datasources.xml")
         plan = load_query_text(EXAMPLES / "customer_summary.qdvm")
-        result = QueryEvaluator(graph, registry).evaluate(plan)
+        result = QueryEvaluator(graph, registry, store=_make_store()).evaluate(plan)
         rows = {row["custID-X"]: row for row in result.to_rows()}
         self.assertEqual(rows["C1"]["Age-A"], "35")
         self.assertEqual(rows["C1"]["Gender-G"], "F")
@@ -41,7 +51,7 @@ class DataMinglerCoreTests(unittest.TestCase):
         graph = load_dvm_xml(EXAMPLES / "sample.dvm.xml")
         registry = DataSourceRegistry.from_xml(EXAMPLES / "datasources.xml")
         plan = load_query_text(EXAMPLES / "transactions_after_2019.qdvm")
-        result = QueryEvaluator(graph, registry).evaluate(plan)
+        result = QueryEvaluator(graph, registry, store=_make_store()).evaluate(plan)
         records = {record["custID-X"]: record for record in result.to_json_records()}
         self.assertEqual(records["C1"]["transID-T_s"], [{"transID-T": "T1", "Amount-Amt": "10"}])
         self.assertEqual(records["C2"]["transID-T_s"], [{"transID-T": "T3", "Amount-Amt": "5"}])

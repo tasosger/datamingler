@@ -45,10 +45,11 @@ class EdgeMaterializer:
         datasource = self.registry.require(edge.datasource)
         root = root_alias or edge.head_name
         child = child_alias or edge.tail_name
-        for row in self.iter_rows(datasource, edge.query):
-            key = _join_positions(row, edge.key_positions)
-            value = _join_positions(row, edge.value_positions)
-            store.add_value(root, child, key, value)
+        with store.pipeline() as pipe:
+            for row in self.iter_rows(datasource, edge.query):
+                key = _join_positions(row, edge.key_positions)
+                value = _join_positions(row, edge.value_positions)
+                pipe.add_value(root, child, key, value)
 
     def materialize_pair(
         self,
