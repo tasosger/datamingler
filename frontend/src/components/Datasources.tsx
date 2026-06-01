@@ -5,7 +5,11 @@ import { getDatasources, removeDatasource } from '@/lib/api';
 import type { Datasource } from '@/lib/types';
 import AddDatasourceModal from './AddDatasourceModal';
 
-export default function Datasources() {
+interface Props {
+  projectId: string;
+}
+
+export default function Datasources({ projectId }: Props) {
   const [sources, setSources]   = useState<Datasource[]>([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState<string | null>(null);
@@ -15,20 +19,20 @@ export default function Datasources() {
     setLoading(true);
     setError(null);
     try {
-      setSources(await getDatasources());
+      setSources(await getDatasources(projectId));
     } catch (err) {
       setError(String(err));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [projectId]);
 
   useEffect(() => { load(); }, [load]);
 
   const handleDelete = async (name: string) => {
     if (!confirm(`Delete datasource "${name}"?`)) return;
     try {
-      await removeDatasource(name);
+      await removeDatasource(name, projectId);
       await load();
     } catch (err) {
       alert('Failed to delete:\n' + err);
@@ -94,6 +98,7 @@ export default function Datasources() {
 
       {showAdd && (
         <AddDatasourceModal
+          projectId={projectId}
           onClose={() => setShowAdd(false)}
           onSaved={async () => { setShowAdd(false); await load(); }}
         />

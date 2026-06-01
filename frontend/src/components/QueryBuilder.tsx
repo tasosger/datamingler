@@ -10,7 +10,11 @@ const EXAMPLE = `define X on custID:
   output A,G,N
   where True`;
 
-export default function QueryBuilder() {
+interface Props {
+  projectId: string;
+}
+
+export default function QueryBuilder({ projectId }: Props) {
   const [query, setQuery]     = useState(EXAMPLE);
   const [result, setResult]   = useState('');
   const [error, setError]     = useState<string | null>(null);
@@ -23,7 +27,7 @@ export default function QueryBuilder() {
     setResult('');
     setFormat(fmt);
     try {
-      setResult(await evalQuery(query, fmt));
+      setResult(await evalQuery(query, fmt, projectId));
     } catch (err) {
       setError(String(err));
     } finally {

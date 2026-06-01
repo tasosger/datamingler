@@ -37,6 +37,8 @@ _NEO4J_URI:      str = "bolt://localhost:7687"
 _NEO4J_USER:     str = "neo4j"
 _NEO4J_PASSWORD: str = "12345678"
 _DATASOURCES_XML: str = ""
+_PROJECTS_DIR: str = "projects"
+_DEFAULT_PROJECT_ID: str = "default"
 _REDIS_HOST:     str = "127.0.0.1"
 _REDIS_PORT:     int = 6379
 _STATIC_DIR: Path = Path(__file__).parent / "static"
@@ -61,58 +63,93 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
+        project_id, project_path = self._project_route(path)
 
         if path in ("", "/"):
             self._serve_file(_STATIC_DIR / "index.html")
         elif path.startswith("/static/"):
             self._serve_file(_STATIC_DIR / path[len("/static/"):])
+        elif path == "/projects":
+            self._respond_projects()
+        elif project_path == "":
+            self._respond_project(project_id)
         elif path == "/dvm":
-            self._respond_dvm()
+            self._respond_dvm(_DEFAULT_PROJECT_ID)
+        elif project_path == "/dvm":
+            self._respond_dvm(project_id)
         elif path == "/inspect":
-            self._respond_inspect()
+            self._respond_inspect(_DEFAULT_PROJECT_ID)
+        elif project_path == "/inspect":
+            self._respond_inspect(project_id)
         elif path == "/datasources":
-            self._respond_datasources()
+            self._respond_datasources(_DEFAULT_PROJECT_ID)
+        elif project_path == "/datasources":
+            self._respond_datasources(project_id)
         else:
             self._send_error(404, f"Not found: {self.path}")
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
+        project_id, project_path = self._project_route(path)
         body = self._read_body()
 
-        if path == "/eval":
-            self._respond_eval(body, fmt="json")
+        if path == "/projects":
+            self._handle_add_project(body)
+        elif path == "/eval":
+            self._respond_eval(_DEFAULT_PROJECT_ID, body, fmt="json")
+        elif project_path == "/eval":
+            self._respond_eval(project_id, body, fmt="json")
         elif path == "/eval-csv":
-            self._respond_eval(body, fmt="csv")
+            self._respond_eval(_DEFAULT_PROJECT_ID, body, fmt="csv")
+        elif project_path == "/eval-csv":
+            self._respond_eval(project_id, body, fmt="csv")
         elif path == "/dvm/edge":
-            self._handle_add_edge(body)
+            self._handle_add_edge(_DEFAULT_PROJECT_ID, body)
+        elif project_path == "/dvm/edge":
+            self._handle_add_edge(project_id, body)
         elif path == "/datasources":
-            self._handle_add_datasource(body)
+            self._handle_add_datasource(_DEFAULT_PROJECT_ID, body)
+        elif project_path == "/datasources":
+            self._handle_add_datasource(project_id, body)
         else:
             self._send_error(404, f"Not found: {self.path}")
 
     def do_PUT(self) -> None:
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
+        project_id, project_path = self._project_route(path)
         body = self._read_body()
 
         if path == "/dvm/edge":
-            self._handle_update_edge(body)
+            self._handle_update_edge(_DEFAULT_PROJECT_ID, body)
+        elif project_path == "/dvm/edge":
+            self._handle_update_edge(project_id, body)
         else:
             self._send_error(404, f"Not found: {self.path}")
 
     def do_DELETE(self) -> None:
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
+        project_id, project_path = self._project_route(path)
         params = parse_qs(parsed.query)
 
         if path == "/dvm/edge":
             self._handle_delete_edge(
+                _DEFAULT_PROJECT_ID,
+                params.get("head", [""])[0],
+                params.get("tail", [""])[0],
+            )
+        elif project_path == "/dvm/edge":
+            self._handle_delete_edge(
+                project_id,
                 params.get("head", [""])[0],
                 params.get("tail", [""])[0],
             )
         elif path.startswith("/datasources/"):
-            self._handle_delete_datasource(path[len("/datasources/"):])
+            self._handle_delete_datasource(_DEFAULT_PROJECT_ID, path[len("/datasources/"):])
+        elif project_path and project_path.startswith("/datasources/"):
+            self._handle_delete_datasource(project_id, project_path[len("/datasources/"):])
         else:
             self._send_error(404, f"Not found: {self.path}")
 
@@ -148,17 +185,46 @@ class _Handler(BaseHTTPRequestHandler):
     def _neo4j_kwargs(self) -> dict:
         return {"uri": _NEO4J_URI, "user": _NEO4J_USER, "password": _NEO4J_PASSWORD}
 
+    def _project_route(self, path: str) -> tuple[str | None, str | None]:
+        parts = [part for part in path.split("/") if part]
+        if len(parts) >= 2 and parts[0] == "projects":
+            return parts[1], "/" + "/".join(parts[2:]) if len(parts) > 2 else ""
+        return None, None
+
+    def _project_store(self):
+        from .projects import ProjectStore
+
+        return ProjectStore(_PROJECTS_DIR)
+
+    def _datasources_xml(self, project_id: str) -> str:
+        return str(self._project_store().datasources_xml(project_id))
+
     # ------------------------------------------------------------------
     # GET handlers — DVM reads from Neo4j
     # ------------------------------------------------------------------
 
-    def _respond_dvm(self) -> None:
+    def _respond_projects(self) -> None:
+        try:
+            self._send_json([project.__dict__ for project in self._project_store().list_projects()])
+        except Exception:
+            self._send_error(500, traceback.format_exc())
+
+    def _respond_project(self, project_id: str) -> None:
+        try:
+            self._send_json(self._project_store().get(project_id).__dict__)
+        except KeyError as exc:
+            self._send_error(404, str(exc))
+        except Exception:
+            self._send_error(500, traceback.format_exc())
+
+    def _respond_dvm(self, project_id: str) -> None:
         try:
             from .models import positions_to_text
             from .neo4j_adapter import read_graph_from_neo4j
 
-            graph = read_graph_from_neo4j(**self._neo4j_kwargs())
+            graph = read_graph_from_neo4j(project_id=project_id, **self._neo4j_kwargs())
             self._send_json({
+                "project_id": project_id,
                 "nodes": [
                     {"name": n.name, "description": n.description}
                     for n in graph.nodes.values()
@@ -182,12 +248,13 @@ class _Handler(BaseHTTPRequestHandler):
         except Exception:
             self._send_error(500, traceback.format_exc())
 
-    def _respond_inspect(self) -> None:
+    def _respond_inspect(self, project_id: str) -> None:
         try:
             from .neo4j_adapter import read_graph_from_neo4j
 
-            graph = read_graph_from_neo4j(**self._neo4j_kwargs())
+            graph = read_graph_from_neo4j(project_id=project_id, **self._neo4j_kwargs())
             self._send_json({
+                "project_id": project_id,
                 "nodes": len(graph.nodes),
                 "edges": len(graph.edges),
                 "adjacency": {
@@ -199,11 +266,11 @@ class _Handler(BaseHTTPRequestHandler):
         except Exception:
             self._send_error(500, traceback.format_exc())
 
-    def _respond_datasources(self) -> None:
+    def _respond_datasources(self, project_id: str) -> None:
         try:
             from .xmlio import load_datasources_xml
 
-            datasources = load_datasources_xml(_DATASOURCES_XML)
+            datasources = load_datasources_xml(self._datasources_xml(project_id))
             self._send_json([
                 {"name": ds.name, "type": ds.type, **ds.options}
                 for ds in datasources.values()
@@ -215,7 +282,7 @@ class _Handler(BaseHTTPRequestHandler):
     # POST handlers
     # ------------------------------------------------------------------
 
-    def _respond_eval(self, query_text: str, fmt: str) -> None:
+    def _respond_eval(self, project_id: str, query_text: str, fmt: str) -> None:
         try:
             from .engine import QueryEvaluator
             from .neo4j_adapter import read_graph_from_neo4j
@@ -224,8 +291,8 @@ class _Handler(BaseHTTPRequestHandler):
 
             from .kvstore import KeyListStore
 
-            graph = read_graph_from_neo4j(**self._neo4j_kwargs())
-            registry = DataSourceRegistry.from_xml(_DATASOURCES_XML)
+            graph = read_graph_from_neo4j(project_id=project_id, **self._neo4j_kwargs())
+            registry = DataSourceRegistry.from_xml(self._datasources_xml(project_id))
             plan = parse_query_text(query_text)
             store = KeyListStore(host=_REDIS_HOST, port=_REDIS_PORT)
             result = QueryEvaluator(graph, registry, store=store).evaluate(plan)
@@ -249,7 +316,21 @@ class _Handler(BaseHTTPRequestHandler):
         except Exception:
             self._send_error(500, traceback.format_exc())
 
-    def _handle_add_edge(self, body: str) -> None:
+    def _handle_add_project(self, body: str) -> None:
+        try:
+            data = json.loads(body)
+            project = self._project_store().create(
+                str(data.get("id", "")),
+                str(data.get("name", "")),
+                description=str(data.get("description", "")),
+            )
+            self._send_json(project.__dict__)
+        except ValueError as exc:
+            self._send_error(400, str(exc))
+        except Exception:
+            self._send_error(500, traceback.format_exc())
+
+    def _handle_add_edge(self, project_id: str, body: str) -> None:
         try:
             from .models import DVMEdge
             from .neo4j_adapter import add_edge_to_neo4j
@@ -266,21 +347,39 @@ class _Handler(BaseHTTPRequestHandler):
                 value_positions=data.get("value", ""),
                 selected=bool(data.get("selected", False)),
             )
-            add_edge_to_neo4j(edge, **self._neo4j_kwargs())
+            add_edge_to_neo4j(edge, project_id=project_id, **self._neo4j_kwargs())
             self._send_json({"ok": True})
         except Exception:
             self._send_error(500, traceback.format_exc())
 
-    def _handle_add_datasource(self, body: str) -> None:
+    def _handle_add_datasource(self, project_id: str, body: str) -> None:
         try:
+            from .datasource_inference import infer_edges_for_datasource
             from .models import DataSource
+            from .neo4j_adapter import add_edge_to_neo4j
             from .xmlio import add_datasource_to_xml
 
             data = json.loads(body)
             name = data.pop("name", "")
             ds_type = data.pop("type", "")
-            add_datasource_to_xml(_DATASOURCES_XML, DataSource(name=name, type=ds_type, options=data))
-            self._send_json({"ok": True})
+            datasource = DataSource(name=name, type=ds_type, options=data)
+            datasources_xml = self._datasources_xml(project_id)
+            add_datasource_to_xml(datasources_xml, datasource)
+
+            inferred_edges = []
+            inference_warning = ""
+            try:
+                inferred_edges = infer_edges_for_datasource(datasource, base_dir=Path(datasources_xml).parent)
+                for edge in inferred_edges:
+                    add_edge_to_neo4j(edge, project_id=project_id, **self._neo4j_kwargs())
+            except Exception as exc:
+                inference_warning = str(exc)
+
+            self._send_json({
+                "ok": True,
+                "inferred_edges": len(inferred_edges),
+                "inference_warning": inference_warning,
+            })
         except Exception:
             self._send_error(500, traceback.format_exc())
 
@@ -288,7 +387,7 @@ class _Handler(BaseHTTPRequestHandler):
     # PUT handlers
     # ------------------------------------------------------------------
 
-    def _handle_update_edge(self, body: str) -> None:
+    def _handle_update_edge(self, project_id: str, body: str) -> None:
         try:
             from .neo4j_adapter import update_edge_in_neo4j
 
@@ -296,7 +395,7 @@ class _Handler(BaseHTTPRequestHandler):
             head = data["head"].strip()
             tail = data["tail"].strip()
             updates = {k: v for k, v in data.items() if k in _UPDATABLE_EDGE_FIELDS}
-            update_edge_in_neo4j(head, tail, updates, **self._neo4j_kwargs())
+            update_edge_in_neo4j(head, tail, updates, project_id=project_id, **self._neo4j_kwargs())
             self._send_json({"ok": True})
         except Exception:
             self._send_error(500, traceback.format_exc())
@@ -305,20 +404,20 @@ class _Handler(BaseHTTPRequestHandler):
     # DELETE handlers
     # ------------------------------------------------------------------
 
-    def _handle_delete_edge(self, head: str, tail: str) -> None:
+    def _handle_delete_edge(self, project_id: str, head: str, tail: str) -> None:
         try:
             from .neo4j_adapter import remove_edge_from_neo4j
 
-            count = remove_edge_from_neo4j(head, tail, **self._neo4j_kwargs())
+            count = remove_edge_from_neo4j(head, tail, project_id=project_id, **self._neo4j_kwargs())
             self._send_json({"removed": count})
         except Exception:
             self._send_error(500, traceback.format_exc())
 
-    def _handle_delete_datasource(self, name: str) -> None:
+    def _handle_delete_datasource(self, project_id: str, name: str) -> None:
         try:
             from .xmlio import remove_datasource_from_xml
 
-            removed = remove_datasource_from_xml(_DATASOURCES_XML, name)
+            removed = remove_datasource_from_xml(self._datasources_xml(project_id), name)
             self._send_json({"removed": removed})
         except Exception:
             self._send_error(500, traceback.format_exc())
@@ -332,6 +431,8 @@ def serve(
     neo4j_password: str = "12345678",
     redis_host: str = "127.0.0.1",
     redis_port: int = 6379,
+    projects_dir: str = "projects",
+    default_project_id: str = "default",
     host: str = "localhost",
     port: int = 8080,
 ) -> None:
@@ -340,18 +441,28 @@ def serve(
     The DVM graph is read from / written to Neo4j on every request.
     ``datasources_xml`` is the only file path required at startup.
     """
-    global _NEO4J_URI, _NEO4J_USER, _NEO4J_PASSWORD, _DATASOURCES_XML, _REDIS_HOST, _REDIS_PORT
+    global _NEO4J_URI, _NEO4J_USER, _NEO4J_PASSWORD, _DATASOURCES_XML, _PROJECTS_DIR, _DEFAULT_PROJECT_ID, _REDIS_HOST, _REDIS_PORT
     _NEO4J_URI      = neo4j_uri
     _NEO4J_USER     = neo4j_user
     _NEO4J_PASSWORD = neo4j_password
     _DATASOURCES_XML = str(Path(datasources_xml).resolve())
+    _PROJECTS_DIR = str(Path(projects_dir).resolve())
+    _DEFAULT_PROJECT_ID = default_project_id
     _REDIS_HOST     = redis_host
     _REDIS_PORT     = redis_port
+
+    from .projects import ProjectStore
+
+    store = ProjectStore(_PROJECTS_DIR)
+    if default_project_id == "default":
+        store.ensure_default(_DATASOURCES_XML)
+    elif not store.exists(default_project_id):
+        store.create(default_project_id, default_project_id, datasources_template=_DATASOURCES_XML)
 
     server = HTTPServer((host, port), _Handler)
     print(f"DataMingler server running on http://{host}:{port}/")
     print(f"  Neo4j:       {neo4j_uri}  (user: {neo4j_user})")
-    print(f"  Datasources: {_DATASOURCES_XML}")
+    print(f"  Projects:    {_PROJECTS_DIR}  (default: {_DEFAULT_PROJECT_ID})")
     print("  Endpoints:")
     print("    GET  /                      web UI")
     print("    GET  /dvm                   DVM graph (Neo4j)")
@@ -380,6 +491,8 @@ if __name__ == "__main__":
     p.add_argument("--neo4j-password", default="12345678")
     p.add_argument("--redis-host",     default="127.0.0.1")
     p.add_argument("--redis-port",     type=int, default=6379)
+    p.add_argument("--projects-dir",   default="projects")
+    p.add_argument("--default-project-id", default="default")
     p.add_argument("--host", default="localhost")
     p.add_argument("--port", type=int, default=8080)
     a = p.parse_args()
@@ -390,6 +503,8 @@ if __name__ == "__main__":
         neo4j_password=a.neo4j_password,
         redis_host=a.redis_host,
         redis_port=a.redis_port,
+        projects_dir=a.projects_dir,
+        default_project_id=a.default_project_id,
         host=a.host,
         port=a.port,
     )

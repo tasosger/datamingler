@@ -5,6 +5,7 @@ import { addDatasource } from '@/lib/api';
 import type { DatasourceInput, DatasourceType } from '@/lib/types';
 
 interface Props {
+  projectId: string;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -30,7 +31,7 @@ const TYPE_FIELDS: Record<DatasourceType, { key: string; label: string; placehol
   ],
 };
 
-export default function AddDatasourceModal({ onClose, onSaved }: Props) {
+export default function AddDatasourceModal({ projectId, onClose, onSaved }: Props) {
   const [name, setName]   = useState('');
   const [type, setType]   = useState<DatasourceType>('csv');
   const [opts, setOpts]   = useState<Record<string, string>>({});
@@ -55,7 +56,7 @@ export default function AddDatasourceModal({ onClose, onSaved }: Props) {
     setError(null);
     try {
       const payload: DatasourceInput = { name: name.trim(), type, ...opts };
-      await addDatasource(payload);
+      await addDatasource(payload, projectId);
       onSaved();
     } catch (err) {
       setError(String(err));

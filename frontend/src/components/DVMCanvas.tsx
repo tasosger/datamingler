@@ -91,7 +91,11 @@ function graphToElements(data: DVMGraph): ElementDefinition[] {
   return els;
 }
 
-export default function DVMCanvas() {
+interface Props {
+  projectId: string;
+}
+
+export default function DVMCanvas({ projectId }: Props) {
   const containerRef  = useRef<HTMLDivElement>(null);
   const cyRef         = useRef<Core | null>(null);
   const [graph, setGraph]         = useState<DVMGraph | null>(null);
@@ -101,12 +105,12 @@ export default function DVMCanvas() {
 
   const loadGraph = useCallback(async () => {
     try {
-      setGraph(await getDVM());
+      setGraph(await getDVM(projectId));
       setLoadError(null);
     } catch (err) {
       setLoadError(String(err));
     }
-  }, []);
+  }, [projectId]);
 
   useEffect(() => { loadGraph(); }, [loadGraph]);
 
@@ -150,7 +154,7 @@ export default function DVMCanvas() {
 
   const handleToggle = async (edge: DVMEdge) => {
     try {
-      await updateEdge(edge.head, edge.tail, { selected: !edge.selected });
+      await updateEdge(edge.head, edge.tail, { selected: !edge.selected }, projectId);
       setActiveEdge(null);
       await loadGraph();
     } catch (err) {
@@ -162,7 +166,7 @@ export default function DVMCanvas() {
     if (!activeEdge) return;
     if (!confirm(`Delete edge ${activeEdge.head} → ${activeEdge.tail}?`)) return;
     try {
-      await deleteEdge(activeEdge.head, activeEdge.tail);
+      await deleteEdge(activeEdge.head, activeEdge.tail, projectId);
       setActiveEdge(null);
       await loadGraph();
     } catch (err) {
@@ -220,6 +224,7 @@ export default function DVMCanvas() {
 
       {showAdd && (
         <AddEdgeModal
+          projectId={projectId}
           onClose={() => setShowAdd(false)}
           onSaved={async () => { setShowAdd(false); await loadGraph(); }}
         />

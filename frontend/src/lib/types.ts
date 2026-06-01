@@ -17,8 +17,15 @@ export interface DVMEdge {
 }
 
 export interface DVMGraph {
+  project_id?: string;
   nodes: AttributeNode[];
   edges: DVMEdge[];
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  description: string;
 }
 
 export type DatasourceType = 'csv' | 'excel' | 'db' | 'process';

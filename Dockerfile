@@ -6,6 +6,8 @@ COPY pyproject.toml .
 COPY datamingler/ datamingler/
 COPY examples/ examples/
 
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
 RUN pip install --no-cache-dir -e ".[excel,neo4j]"
 
 COPY docker-entrypoint.sh /docker-entrypoint.sh

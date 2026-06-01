@@ -3,6 +3,11 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   neo4j:
     image: neo4j:5
@@ -10,8 +15,13 @@ services:
     environment:
       NEO4J_AUTH: neo4j/12345678
     ports:
-      - "7474:7474"   # browser UI (optional — remove if you don't need it)
-      - "7687:7687"   # bolt (optional — remove if you don't need it)
+      - "7474:7474"
+      - "7687:7687"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:7474"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
 
   backend:
     build:
@@ -19,16 +29,28 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     depends_on:
-      - redis
-      - neo4j
+      redis:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
     environment:
       NEO4J_URI: bolt://neo4j:7687
       NEO4J_USER: neo4j
       NEO4J_PASSWORD: "12345678"
       REDIS_HOST: redis
       REDIS_PORT: "6379"
+      DATAMINGLER_PROJECTS_DIR: /app/projects
+      DATAMINGLER_DEFAULT_PROJECT_ID: default
     ports:
-      - "8080:8080"   # optional — only needed if you want to call the API directly
+      - "8080:8080"
+    volumes:
+      - projects:/app/projects
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/datasources')"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
 
   frontend:
     build:
@@ -38,6 +60,10 @@ services:
         PYTHON_API_URL: http://backend:8080
     restart: unless-stopped
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     ports:
       - "3000:3000"
+
+volumes:
+  projects:

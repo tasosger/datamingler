@@ -5,6 +5,7 @@ import { addEdge } from '@/lib/api';
 import type { EdgeInput } from '@/lib/types';
 
 interface Props {
+  projectId: string;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -13,7 +14,7 @@ const EMPTY: EdgeInput = {
   head: '', tail: '', datasource: '', key: '', value: '', query: '', selected: false,
 };
 
-export default function AddEdgeModal({ onClose, onSaved }: Props) {
+export default function AddEdgeModal({ projectId, onClose, onSaved }: Props) {
   const [form, setForm] = useState<EdgeInput>(EMPTY);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +31,7 @@ export default function AddEdgeModal({ onClose, onSaved }: Props) {
     setSaving(true);
     setError(null);
     try {
-      await addEdge(form);
+      await addEdge(form, projectId);
       onSaved();
     } catch (err) {
       setError(String(err));

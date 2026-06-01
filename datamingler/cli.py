@@ -53,17 +53,20 @@ def main(argv: list[str] | None = None) -> int:
     neo4j_load.add_argument("--user", default="neo4j")
     neo4j_load.add_argument("--password", default="12345678")
     neo4j_load.add_argument("--reset", action="store_true")
+    neo4j_load.add_argument("--project-id", default="default")
 
     neo4j_save = subparsers.add_parser("save-neo4j", help="Save Neo4j DVM graph to XML")
     neo4j_save.add_argument("--output", "-o", required=True)
     neo4j_save.add_argument("--uri", default="bolt://localhost:7687")
     neo4j_save.add_argument("--user", default="neo4j")
     neo4j_save.add_argument("--password", default="12345678")
+    neo4j_save.add_argument("--project-id", default="default")
 
     neo4j_delete = subparsers.add_parser("delete-neo4j", help="Delete all DVM attribute nodes from Neo4j")
     neo4j_delete.add_argument("--uri", default="bolt://localhost:7687")
     neo4j_delete.add_argument("--user", default="neo4j")
     neo4j_delete.add_argument("--password", default="12345678")
+    neo4j_delete.add_argument("--project-id", default="default")
 
     export_json = subparsers.add_parser(
         "export-json",
@@ -88,6 +91,8 @@ def main(argv: list[str] | None = None) -> int:
     serve_parser.add_argument("--neo4j-password", default="12345678")
     serve_parser.add_argument("--redis-host",     default="127.0.0.1")
     serve_parser.add_argument("--redis-port",     type=int, default=6379)
+    serve_parser.add_argument("--projects-dir",   default="projects")
+    serve_parser.add_argument("--default-project-id", default="default")
     serve_parser.add_argument("--host", default="localhost")
     serve_parser.add_argument("--port", type=int, default=8080)
 
@@ -171,18 +176,35 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "load-neo4j":
         graph = load_dvm_xml(args.dvm_xml)
-        load_graph_to_neo4j(graph, uri=args.uri, user=args.user, password=args.password, reset=args.reset)
+        load_graph_to_neo4j(
+            graph,
+            uri=args.uri,
+            user=args.user,
+            password=args.password,
+            reset=args.reset,
+            project_id=args.project_id,
+        )
         print(f"loaded {len(graph.edges)} edge(s)")
         return 0
 
     if args.command == "save-neo4j":
-        graph = read_graph_from_neo4j(uri=args.uri, user=args.user, password=args.password)
+        graph = read_graph_from_neo4j(
+            uri=args.uri,
+            user=args.user,
+            password=args.password,
+            project_id=args.project_id,
+        )
         save_dvm_xml(graph, args.output)
         print(args.output)
         return 0
 
     if args.command == "delete-neo4j":
-        delete_graph_from_neo4j(uri=args.uri, user=args.user, password=args.password)
+        delete_graph_from_neo4j(
+            uri=args.uri,
+            user=args.user,
+            password=args.password,
+            project_id=args.project_id,
+        )
         print("deleted")
         return 0
 
@@ -207,6 +229,8 @@ def main(argv: list[str] | None = None) -> int:
             neo4j_password=args.neo4j_password,
             redis_host=args.redis_host,
             redis_port=args.redis_port,
+            projects_dir=args.projects_dir,
+            default_project_id=args.default_project_id,
             host=args.host,
             port=args.port,
         )

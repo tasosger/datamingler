@@ -1,5 +1,4 @@
-// All paths go through /api/* which Next.js proxies to the Python server.
-import type { DVMEdge, DVMGraph, Datasource, EdgeInput, DatasourceInput } from './types';
+import type { DVMEdge, DVMGraph, Datasource, EdgeInput, DatasourceInput, Project } from './types';
 
 const BASE = '/api';
 
@@ -14,14 +13,29 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.text() as unknown as Promise<T>;
 }
 
-// ── DVM graph ──────────────────────────────────────────────────────────────
-
-export function getDVM(): Promise<DVMGraph> {
-  return request<DVMGraph>('/dvm');
+function projectPath(projectId: string | undefined, path: string): string {
+  const id = projectId || 'default';
+  return `/projects/${encodeURIComponent(id)}${path}`;
 }
 
-export function addEdge(edge: EdgeInput): Promise<void> {
-  return request('/dvm/edge', {
+export function getProjects(): Promise<Project[]> {
+  return request<Project[]>('/projects');
+}
+
+export function addProject(project: Pick<Project, 'id' | 'name'> & Partial<Project>): Promise<Project> {
+  return request<Project>('/projects', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(project),
+  });
+}
+
+export function getDVM(projectId?: string): Promise<DVMGraph> {
+  return request<DVMGraph>(projectPath(projectId, '/dvm'));
+}
+
+export function addEdge(edge: EdgeInput, projectId?: string): Promise<void> {
+  return request(projectPath(projectId, '/dvm/edge'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(edge),
@@ -32,46 +46,44 @@ export function updateEdge(
   head: string,
   tail: string,
   updates: Partial<Pick<DVMEdge, 'selected' | 'datasource' | 'query' | 'description'>>,
+  projectId?: string,
 ): Promise<void> {
-  return request('/dvm/edge', {
+  return request(projectPath(projectId, '/dvm/edge'), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ head, tail, ...updates }),
   });
 }
 
-export function deleteEdge(head: string, tail: string): Promise<void> {
+export function deleteEdge(head: string, tail: string, projectId?: string): Promise<void> {
   return request(
-    `/dvm/edge?head=${encodeURIComponent(head)}&tail=${encodeURIComponent(tail)}`,
+    `${projectPath(projectId, '/dvm/edge')}?head=${encodeURIComponent(head)}&tail=${encodeURIComponent(tail)}`,
     { method: 'DELETE' },
   );
 }
 
-// ── Datasources ────────────────────────────────────────────────────────────
-
-export function getDatasources(): Promise<Datasource[]> {
-  return request<Datasource[]>('/datasources');
+export function getDatasources(projectId?: string): Promise<Datasource[]> {
+  return request<Datasource[]>(projectPath(projectId, '/datasources'));
 }
 
-export function addDatasource(ds: DatasourceInput): Promise<void> {
-  return request('/datasources', {
+export function addDatasource(ds: DatasourceInput, projectId?: string): Promise<void> {
+  return request(projectPath(projectId, '/datasources'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(ds),
   });
 }
 
-export function removeDatasource(name: string): Promise<void> {
-  return request(`/datasources/${encodeURIComponent(name)}`, { method: 'DELETE' });
+export function removeDatasource(name: string, projectId?: string): Promise<void> {
+  return request(projectPath(projectId, `/datasources/${encodeURIComponent(name)}`), { method: 'DELETE' });
 }
-
-// ── Query evaluation ───────────────────────────────────────────────────────
 
 export async function evalQuery(
   queryText: string,
   format: 'json' | 'csv',
+  projectId?: string,
 ): Promise<string> {
-  const endpoint = format === 'csv' ? '/eval-csv' : '/eval';
+  const endpoint = projectPath(projectId, format === 'csv' ? '/eval-csv' : '/eval');
   const res = await fetch(`${BASE}${endpoint}`, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain' },
