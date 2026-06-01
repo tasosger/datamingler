@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import re
 import traceback
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -44,6 +45,7 @@ _REDIS_PORT:     int = 6379
 _STATIC_DIR: Path = Path(__file__).parent / "static"
 
 _UPDATABLE_EDGE_FIELDS = {"selected", "datasource", "query", "description"}
+_SAFE_UPLOAD_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -92,6 +94,11 @@ class _Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
         project_id, project_path = self._project_route(path)
+
+        if project_path == "/files":
+            self._handle_upload_file(project_id, parsed.query)
+            return
+
         body = self._read_body()
 
         if path == "/projects":
@@ -160,6 +167,10 @@ class _Handler(BaseHTTPRequestHandler):
     def _read_body(self) -> str:
         length = int(self.headers.get("Content-Length", 0))
         return self.rfile.read(length).decode("utf-8") if length else ""
+
+    def _read_bytes(self) -> bytes:
+        length = int(self.headers.get("Content-Length", 0))
+        return self.rfile.read(length) if length else b""
 
     def _serve_file(self, full: Path) -> None:
         if not full.exists() or not full.is_file():
@@ -383,6 +394,25 @@ class _Handler(BaseHTTPRequestHandler):
         except Exception:
             self._send_error(500, traceback.format_exc())
 
+    def _handle_upload_file(self, project_id: str, query: str) -> None:
+        try:
+            params = parse_qs(query)
+            filename = _safe_upload_filename(params.get("filename", [""])[0])
+            if not filename:
+                self._send_error(400, "filename is required")
+                return
+
+            upload_dir = self._project_store().project_dir(project_id) / "uploads"
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            target = _unique_upload_path(upload_dir / filename)
+            target.write_bytes(self._read_bytes())
+
+            self._send_json({"path": "uploads", "filename": target.name})
+        except ValueError as exc:
+            self._send_error(400, str(exc))
+        except Exception:
+            self._send_error(500, traceback.format_exc())
+
     # ------------------------------------------------------------------
     # PUT handlers
     # ------------------------------------------------------------------
@@ -479,6 +509,23 @@ def serve(
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nserver stopped")
+
+
+def _safe_upload_filename(filename: str) -> str:
+    name = Path(filename).name.strip()
+    return _SAFE_UPLOAD_NAME_RE.sub("_", name)
+
+
+def _unique_upload_path(path: Path) -> Path:
+    if not path.exists():
+        return path
+    stem = path.stem
+    suffix = path.suffix
+    for index in range(1, 10_000):
+        candidate = path.with_name(f"{stem}-{index}{suffix}")
+        if not candidate.exists():
+            return candidate
+    raise ValueError(f"Could not find an available upload filename for {path.name!r}")
 
 
 if __name__ == "__main__":

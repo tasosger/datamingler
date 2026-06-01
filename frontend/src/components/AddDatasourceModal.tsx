@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { addDatasource } from '@/lib/api';
+import { addDatasource, uploadDatasourceFile } from '@/lib/api';
 import type { DatasourceInput, DatasourceType } from '@/lib/types';
 
 interface Props {
@@ -23,7 +23,8 @@ const TYPE_FIELDS: Record<DatasourceType, { key: string; label: string; placehol
     { key: 'sheet',    label: 'Sheet name',      placeholder: 'Sheet1 (optional)' },
   ],
   db: [
-    { key: 'connection', label: 'Connection string', placeholder: 'sqlite:///path/to/db.sqlite' },
+    { key: 'system',     label: 'Database system', default: 'sqlite' },
+    { key: 'connection', label: 'Connection path',  placeholder: 'uploads/data.sqlite' },
   ],
   process: [
     { key: 'system',    label: 'System command', placeholder: 'python generate.py' },
@@ -36,6 +37,7 @@ export default function AddDatasourceModal({ projectId, onClose, onSaved }: Prop
   const [type, setType]   = useState<DatasourceType>('csv');
   const [opts, setOpts]   = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError]   = useState<string | null>(null);
 
   const handleTypeChange = (t: DatasourceType) => {
@@ -49,6 +51,39 @@ export default function AddDatasourceModal({ projectId, onClose, onSaved }: Prop
 
   const setOpt = (key: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setOpts(prev => ({ ...prev, [key]: e.target.value }));
+
+  const canUploadFile = type === 'csv' || type === 'excel' || type === 'db';
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const uploaded = await uploadDatasourceFile(file, projectId);
+      const stem = uploaded.filename.replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9_-]+/g, '_');
+      setName(prev => prev || stem);
+      setOpts(prev => {
+        if (type === 'db') {
+          return {
+            ...prev,
+            system: prev.system || 'sqlite',
+            connection: `${uploaded.path}/${uploaded.filename}`,
+          };
+        }
+        return {
+          ...prev,
+          path: uploaded.path,
+          filename: uploaded.filename,
+        };
+      });
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
 
   const handleSave = async () => {
     if (!name.trim()) { setError('Name is required.'); return; }
@@ -104,12 +139,26 @@ export default function AddDatasourceModal({ projectId, onClose, onSaved }: Prop
             </div>
           ))}
 
+          {canUploadFile && (
+            <div className="col-span-2">
+              <label className="label">Select file</label>
+              <input
+                className="input"
+                type="file"
+                accept={type === 'csv' ? '.csv,.tsv,text/csv,text/tab-separated-values' : type === 'excel' ? '.xlsx,.xls' : '.sqlite,.sqlite3,.db'}
+                onChange={handleFileChange}
+                disabled={uploading}
+              />
+              {uploading && <p className="mt-1 text-xs text-gray-500">Uploading selected file...</p>}
+            </div>
+          )}
+
           {error && <p className="col-span-2 text-xs text-red-600">{error}</p>}
         </div>
 
         <div className="flex justify-end gap-2 px-4 py-3 border-t bg-gray-50 rounded-b-lg">
           <button onClick={onClose} className="btn-secondary">Cancel</button>
-          <button onClick={handleSave} disabled={saving} className="btn-primary">
+          <button onClick={handleSave} disabled={saving || uploading} className="btn-primary">
             {saving ? 'Adding…' : 'Add'}
           </button>
         </div>

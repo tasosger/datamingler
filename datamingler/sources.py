@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import csv
+import shlex
 import sqlite3
 import subprocess
+from contextlib import closing
 from pathlib import Path
 from typing import Iterable, Sequence
 
@@ -113,10 +115,13 @@ class EdgeMaterializer:
         connection = datasource.get("connection")
         if system in {"sqlite", "sqlite3"}:
             db_path = self._resolve_path(connection)
-            with sqlite3.connect(db_path) as conn:
+            with closing(sqlite3.connect(db_path)) as conn:
                 cursor = conn.execute(query)
-                for row in cursor:
-                    yield ["" if value is None else str(value) for value in row]
+                try:
+                    for row in cursor:
+                        yield ["" if value is None else str(value) for value in row]
+                finally:
+                    cursor.close()
             return
 
         if "://" in connection:
@@ -125,9 +130,16 @@ class EdgeMaterializer:
             except ImportError as exc:
                 raise RuntimeError("SQLAlchemy URL datasources require: pip install datamingler[db]") from exc
             engine = create_engine(connection)
-            with engine.connect() as conn:
-                for row in conn.execute(text(query)):
-                    yield ["" if value is None else str(value) for value in row]
+            try:
+                with engine.connect() as conn:
+                    result = conn.execute(text(query))
+                    try:
+                        for row in result:
+                            yield ["" if value is None else str(value) for value in row]
+                    finally:
+                        result.close()
+            finally:
+                engine.dispose()
             return
 
         raise NotImplementedError(
@@ -137,10 +149,21 @@ class EdgeMaterializer:
 
     def _iter_process(self, datasource: DataSource) -> Iterable[list[str]]:
         delimiter = datasource.get("delimiter", ",") or ","
+        system = datasource.get("system") or datasource.get("command")
         engine = datasource.get("engine")
         engine_path = datasource.get("enginePath")
-        file_path = self._resolve_file(datasource)
-        command = [str(Path(engine_path) / engine) if engine_path else engine, str(file_path)]
+        filename = datasource.get("filename")
+
+        if system:
+            command = shlex.split(system)
+        elif engine:
+            command = [str(Path(engine_path) / engine) if engine_path else engine]
+        else:
+            raise ValueError(f"Process datasource {datasource.name!r} requires a system command or engine")
+
+        if filename:
+            command.append(str(self._resolve_file(datasource)))
+
         completed = subprocess.run(command, check=True, capture_output=True, text=True)
         for line in completed.stdout.splitlines():
             if line.strip():

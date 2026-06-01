@@ -74,6 +74,15 @@ export function addDatasource(ds: DatasourceInput, projectId?: string): Promise<
   });
 }
 
+export function uploadDatasourceFile(file: File, projectId?: string): Promise<{ path: string; filename: string }> {
+  const endpoint = `${projectPath(projectId, '/files')}?filename=${encodeURIComponent(file.name)}`;
+  return request<{ path: string; filename: string }>(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    body: file,
+  });
+}
+
 export function removeDatasource(name: string, projectId?: string): Promise<void> {
   return request(projectPath(projectId, `/datasources/${encodeURIComponent(name)}`), { method: 'DELETE' });
 }
