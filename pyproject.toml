@@ -15,6 +15,12 @@ dependencies = ["redis>=4.0"]
 excel = ["openpyxl>=3.1"]
 db = ["sqlalchemy>=2.0"]
 neo4j = ["neo4j>=5.0"]
+llm = [
+    "langchain-core>=0.2",
+    "langchain-openai>=0.1",
+    "langchain-anthropic>=0.1",
+    "langgraph>=0.2",
+]
 dev = ["pytest>=8.0", "fakeredis>=2.0"]
 
 [project.scripts]

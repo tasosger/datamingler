@@ -87,6 +87,96 @@ export function removeDatasource(name: string, projectId?: string): Promise<void
   return request(projectPath(projectId, `/datasources/${encodeURIComponent(name)}`), { method: 'DELETE' });
 }
 
+export interface AgentStep {
+  name: string;
+  status: string;
+  detail: string;
+  data?: Record<string, unknown> | null;
+}
+
+export interface AgentQuery {
+  title: string;
+  query: string;
+  result: string;
+  error: string;
+}
+
+export interface QueryAgentResponse {
+  answer: string;
+  provider: 'openai' | 'anthropic';
+  model: string;
+  queries: AgentQuery[];
+  steps: AgentStep[];
+}
+
+export interface AgentMessage {
+  role: 'user' | 'assistant' | string;
+  content: string;
+  created_at: string;
+  provider?: string;
+  model?: string;
+  steps?: AgentStep[];
+  queries?: AgentQuery[];
+}
+
+export interface AgentSession {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  provider: 'openai' | 'anthropic' | string;
+  model: string;
+  messages: AgentMessage[];
+  message_count?: number;
+}
+
+export function getAgentSessions(projectId?: string): Promise<AgentSession[]> {
+  return request<AgentSession[]>(projectPath(projectId, '/agent-sessions'));
+}
+
+export function createAgentSession(
+  provider: 'openai' | 'anthropic',
+  model: string,
+  projectId?: string,
+): Promise<AgentSession> {
+  return request<AgentSession>(projectPath(projectId, '/agent-sessions'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider, model }),
+  });
+}
+
+export function getAgentSession(sessionId: string, projectId?: string): Promise<AgentSession> {
+  return request<AgentSession>(projectPath(projectId, `/agent-sessions/${encodeURIComponent(sessionId)}`));
+}
+
+export function sendAgentSessionMessage(
+  sessionId: string,
+  prompt: string,
+  provider: 'openai' | 'anthropic',
+  model: string,
+  projectId?: string,
+): Promise<AgentSession> {
+  return request<AgentSession>(projectPath(projectId, `/agent-sessions/${encodeURIComponent(sessionId)}/messages`), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt, provider, model }),
+  });
+}
+
+export function runQueryAgent(
+  prompt: string,
+  provider: 'openai' | 'anthropic',
+  model: string,
+  projectId?: string,
+): Promise<QueryAgentResponse> {
+  return request<QueryAgentResponse>(projectPath(projectId, '/query/agent'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt, provider, model }),
+  });
+}
+
 export async function evalQuery(
   queryText: string,
   format: 'json' | 'csv',

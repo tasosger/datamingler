@@ -9,9 +9,12 @@ from pathlib import Path
 
 import fakeredis
 
+from datamingler.agent_sessions import AgentSessionStore
 from datamingler.engine import QueryEvaluator
 from datamingler.kvstore import KeyListStore
 from datamingler.models import DataSource
+from datamingler.projects import ProjectStore
+from datamingler.local_query_planner import plan_natural_language
 from datamingler.sources import DataSourceRegistry, EdgeMaterializer
 from datamingler.xmlio import load_dvm_xml, load_query_text, parse_query_text, save_query_xml, load_query_xml
 
@@ -60,6 +63,28 @@ class DataMinglerCoreTests(unittest.TestCase):
         self.assertEqual(records["C1"]["transID-T_s"], [{"transID-T": "T1", "Amount-Amt": "10"}])
         self.assertEqual(records["C2"]["transID-T_s"], [{"transID-T": "T3", "Amount-Amt": "5"}])
 
+    def test_natural_language_planner_generates_valid_query(self) -> None:
+        graph = load_dvm_xml(EXAMPLES / "sample.dvm.xml")
+        generated = plan_natural_language(
+            "customers with age over 40, include gender and comment length",
+            graph,
+        )
+        self.assertGreaterEqual(len(generated), 1)
+        plan = parse_query_text(generated[0].query)
+        self.assertIn("float($A$) >= 40", generated[0].query)
+        self.assertIn("map:python,,len($C$);aggregate:sum", generated[0].query)
+        self.assertIn("G", plan.nodes[plan.root].children)
+
+    def test_natural_language_planner_can_return_multiple_queries(self) -> None:
+        graph = load_dvm_xml(EXAMPLES / "sample.dvm.xml")
+        generated = plan_natural_language(
+            "show age and gender; show comment length",
+            graph,
+        )
+        self.assertEqual(len(generated), 2)
+        for item in generated:
+            parse_query_text(item.query)
+
 
 class DataSourceTests(unittest.TestCase):
     def _materializer(self, temp_dir: Path) -> EdgeMaterializer:
@@ -78,6 +103,7 @@ class DataSourceTests(unittest.TestCase):
             rows = list(self._materializer(temp_dir).iter_rows(datasource))
 
         self.assertEqual(rows, [["C1", "35"], ["C2", "41"]])
+
 
     def test_sqlite_db_datasource_runs_edge_query(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -163,6 +189,35 @@ class DataSourceTests(unittest.TestCase):
             rows = list(self._materializer(temp_dir).iter_rows(datasource))
 
         self.assertEqual(rows, [["C1", "35"], ["C2", "41"]])
+
+
+class AgentSessionTests(unittest.TestCase):
+    def test_project_agent_sessions_are_independent_and_persistent(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            project_store = ProjectStore(temp)
+            project_store.create("alpha", "Alpha")
+            project_store.create("beta", "Beta")
+            session_store = AgentSessionStore(project_store)
+
+            alpha = session_store.create("alpha", provider="openai", model="gpt-5.1")
+            beta = session_store.create("beta", provider="anthropic", model="claude-sonnet-4-5")
+            session_store.append_user_message("alpha", alpha.id, "show age", provider="openai", model="gpt-5.1")
+            session_store.append_assistant_message(
+                "alpha",
+                alpha.id,
+                "done",
+                provider="openai",
+                model="gpt-5.1",
+                steps=[{"name": "Run", "status": "ok"}],
+                queries=[{"title": "Age", "query": "define X on custID:", "result": "[]", "error": ""}],
+            )
+
+            reloaded_alpha = AgentSessionStore(ProjectStore(temp)).get("alpha", alpha.id)
+            beta_sessions = session_store.list("beta")
+
+        self.assertEqual(len(reloaded_alpha.messages), 2)
+        self.assertEqual(reloaded_alpha.messages[-1].steps[0]["name"], "Run")
+        self.assertEqual([session.id for session in beta_sessions], [beta.id])
 
 
 if __name__ == "__main__":

@@ -87,6 +87,14 @@ class _Handler(BaseHTTPRequestHandler):
             self._respond_datasources(_DEFAULT_PROJECT_ID)
         elif project_path == "/datasources":
             self._respond_datasources(project_id)
+        elif path == "/agent-sessions":
+            self._respond_agent_sessions(_DEFAULT_PROJECT_ID)
+        elif project_path == "/agent-sessions":
+            self._respond_agent_sessions(project_id)
+        elif path.startswith("/agent-sessions/"):
+            self._respond_agent_session(_DEFAULT_PROJECT_ID, path[len("/agent-sessions/"):])
+        elif project_path and project_path.startswith("/agent-sessions/"):
+            self._respond_agent_session(project_id, project_path[len("/agent-sessions/"):])
         else:
             self._send_error(404, f"Not found: {self.path}")
 
@@ -103,6 +111,16 @@ class _Handler(BaseHTTPRequestHandler):
 
         if path == "/projects":
             self._handle_add_project(body)
+        elif path == "/agent-sessions":
+            self._handle_create_agent_session(_DEFAULT_PROJECT_ID, body)
+        elif project_path == "/agent-sessions":
+            self._handle_create_agent_session(project_id, body)
+        elif path.startswith("/agent-sessions/") and path.endswith("/messages"):
+            session_id = path[len("/agent-sessions/"):-len("/messages")].strip("/")
+            self._handle_agent_session_message(_DEFAULT_PROJECT_ID, session_id, body)
+        elif project_path and project_path.startswith("/agent-sessions/") and project_path.endswith("/messages"):
+            session_id = project_path[len("/agent-sessions/"):-len("/messages")].strip("/")
+            self._handle_agent_session_message(project_id, session_id, body)
         elif path == "/eval":
             self._respond_eval(_DEFAULT_PROJECT_ID, body, fmt="json")
         elif project_path == "/eval":
@@ -111,6 +129,10 @@ class _Handler(BaseHTTPRequestHandler):
             self._respond_eval(_DEFAULT_PROJECT_ID, body, fmt="csv")
         elif project_path == "/eval-csv":
             self._respond_eval(project_id, body, fmt="csv")
+        elif path == "/query/agent":
+            self._handle_query_agent(_DEFAULT_PROJECT_ID, body)
+        elif project_path == "/query/agent":
+            self._handle_query_agent(project_id, body)
         elif path == "/dvm/edge":
             self._handle_add_edge(_DEFAULT_PROJECT_ID, body)
         elif project_path == "/dvm/edge":
@@ -210,6 +232,11 @@ class _Handler(BaseHTTPRequestHandler):
     def _datasources_xml(self, project_id: str) -> str:
         return str(self._project_store().datasources_xml(project_id))
 
+    def _agent_sessions(self):
+        from .agent_sessions import AgentSessionStore
+
+        return AgentSessionStore(self._project_store())
+
     # ------------------------------------------------------------------
     # GET handlers — DVM reads from Neo4j
     # ------------------------------------------------------------------
@@ -289,6 +316,30 @@ class _Handler(BaseHTTPRequestHandler):
         except Exception:
             self._send_error(500, traceback.format_exc())
 
+    def _respond_agent_sessions(self, project_id: str) -> None:
+        try:
+            from .agent_sessions import session_to_dict
+
+            self._send_json([
+                session_to_dict(session, include_messages=False)
+                for session in self._agent_sessions().list(project_id)
+            ])
+        except Exception:
+            self._send_error(500, traceback.format_exc())
+
+    def _respond_agent_session(self, project_id: str, session_id: str) -> None:
+        try:
+            from .agent_sessions import session_to_dict
+
+            session = self._agent_sessions().get(project_id, session_id)
+            self._send_json(session_to_dict(session))
+        except KeyError as exc:
+            self._send_error(404, str(exc))
+        except ValueError as exc:
+            self._send_error(400, str(exc))
+        except Exception:
+            self._send_error(500, traceback.format_exc())
+
     # ------------------------------------------------------------------
     # POST handlers
     # ------------------------------------------------------------------
@@ -340,6 +391,117 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_error(400, str(exc))
         except Exception:
             self._send_error(500, traceback.format_exc())
+
+    def _handle_create_agent_session(self, project_id: str, body: str) -> None:
+        try:
+            from .agent_sessions import session_to_dict
+
+            data = json.loads(body or "{}")
+            session = self._agent_sessions().create(
+                project_id,
+                title=str(data.get("title", "")),
+                provider=str(data.get("provider", "openai")),
+                model=str(data.get("model", "gpt-5.1")),
+            )
+            self._send_json(session_to_dict(session))
+        except ValueError as exc:
+            self._send_error(400, str(exc))
+        except Exception:
+            self._send_error(500, traceback.format_exc())
+
+    def _handle_agent_session_message(self, project_id: str, session_id: str, body: str) -> None:
+        try:
+            from .agent_sessions import session_to_dict
+            from .llm_query_agent import response_to_dict
+
+            data = json.loads(body)
+            prompt = str(data.get("prompt", ""))
+            provider = str(data.get("provider") or "openai")
+            model = str(data.get("model") or "")
+            if not prompt.strip():
+                raise ValueError("prompt is required")
+            if not model.strip():
+                raise ValueError("model is required")
+
+            store = self._agent_sessions()
+            session = store.append_user_message(project_id, session_id, prompt, provider=provider, model=model)
+            history = [
+                {"role": message.role, "content": message.content}
+                for message in session.messages[:-1]
+                if message.role in {"user", "assistant"}
+            ]
+            response = self._run_agent_for_prompt(project_id, prompt, provider, model, history)
+            response_dict = response_to_dict(response)
+            updated = store.append_assistant_message(
+                project_id,
+                session_id,
+                response.answer,
+                provider=provider,
+                model=model,
+                steps=response_dict["steps"],
+                queries=response_dict["queries"],
+            )
+            self._send_json(session_to_dict(updated))
+        except ValueError as exc:
+            self._send_error(400, str(exc))
+        except RuntimeError as exc:
+            self._send_error(400, str(exc))
+        except KeyError as exc:
+            self._send_error(404, str(exc))
+        except Exception:
+            self._send_error(500, traceback.format_exc())
+
+    def _handle_query_agent(self, project_id: str, body: str) -> None:
+        try:
+            from .llm_query_agent import response_to_dict, run_query_agent
+
+            data = json.loads(body)
+            prompt = str(data.get("prompt", ""))
+            provider = str(data.get("provider") or "openai")
+            model = str(data.get("model") or "")
+            if not model:
+                raise ValueError("model is required")
+            response = self._run_agent_for_prompt(project_id, prompt, provider, model, [])
+            self._send_json(response_to_dict(response))
+        except ValueError as exc:
+            self._send_error(400, str(exc))
+        except RuntimeError as exc:
+            self._send_error(400, str(exc))
+        except Exception:
+            self._send_error(500, traceback.format_exc())
+
+    def _run_agent_for_prompt(
+        self,
+        project_id: str,
+        prompt: str,
+        provider: str,
+        model: str,
+        history: list[dict[str, str]],
+    ):
+        from .engine import QueryEvaluator
+        from .kvstore import KeyListStore
+        from .llm_query_agent import run_query_agent
+        from .neo4j_adapter import read_graph_from_neo4j
+        from .sources import DataSourceRegistry
+        from .xmlio import parse_query_text
+
+        graph = read_graph_from_neo4j(project_id=project_id, **self._neo4j_kwargs())
+        registry = DataSourceRegistry.from_xml(self._datasources_xml(project_id))
+
+        def evaluate_query(query_text: str) -> str:
+            plan = parse_query_text(query_text)
+            store = KeyListStore(host=_REDIS_HOST, port=_REDIS_PORT)
+            result = QueryEvaluator(graph, registry, store=store).evaluate(plan)
+            return json.dumps(result.to_json_records(), indent=2)
+
+        return run_query_agent(
+            prompt,
+            graph,
+            provider=provider,  # type: ignore[arg-type]
+            model=model,
+            evaluate_query=evaluate_query,
+            history=history,
+        )
 
     def _handle_add_edge(self, project_id: str, body: str) -> None:
         try:
